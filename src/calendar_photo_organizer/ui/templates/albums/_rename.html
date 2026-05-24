@@ -1,0 +1,4 @@
+<form hx-post="/albums/{{ album.id }}/rename" hx-ext="json-enc">
+  <input type="text" name="display_name" value="{{ album.display_name }}" required />
+  <button type="submit">Rename</button>
+</form>

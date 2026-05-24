@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block body %}
+{% if album %}
+<h2>{{ album.display_name }}</h2>
+<p>Folder: <code>{{ album.folder_name }}</code> &mdash; status: {{ album.status }}</p>
+<p>{{ total }} items</p>
+<ul>
+  {% for mid in media_ids %}
+    <li>media #{{ mid }}</li>
+  {% endfor %}
+</ul>
+{% else %}
+<p>Album not found.</p>
+{% endif %}
+{% endblock %}

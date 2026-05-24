@@ -1,0 +1,11 @@
+<div class="bulk-actions">
+  <form hx-post="/albums/bulk/approve" hx-ext="json-enc" style="display:inline">
+    <input type="hidden" name="band" value="{{ band|default('high') }}" />
+    <button type="submit">Approve all {{ band|default('high') }}</button>
+  </form>
+  <form hx-post="/albums/bulk/reject" hx-ext="json-enc" style="display:inline">
+    <input type="hidden" name="band" value="low" />
+    <input type="hidden" name="empty_only" value="true" />
+    <button type="submit">Reject empty (low)</button>
+  </form>
+</div>

@@ -1,0 +1,5 @@
+<form hx-post="/albums/{{ album.id }}/split" hx-ext="json-enc">
+  <p>Select media_ids[] to move into a new album.</p>
+  <input type="text" name="display_name" placeholder="New album name" required />
+  <button type="submit">Split</button>
+</form>

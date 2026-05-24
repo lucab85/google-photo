@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block body %}
+<h2>Re-authentication required</h2>
+<p>{{ provider }} access token expired. Run <code>cpo auth google-calendar</code> in your terminal to refresh, then resume the paused job.</p>
+{% endblock %}
