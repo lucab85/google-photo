@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block body %}
+<h2>Unmatched media{% if date %} for {{ date }}{% endif %}</h2>
+<ul>
+  {% for m in media %}
+    <li>#{{ m.id }} &mdash; {{ m.captured_at_utc or "(no timestamp)" }}</li>
+  {% endfor %}
+</ul>
+<p>Page {{ page }} (size {{ page_size }})</p>
+{% endblock %}

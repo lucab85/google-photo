@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block body %}
+<h2>Export preview</h2>
+<p>Target: <code>{{ target }}</code> &mdash; mode: {{ mode }}</p>
+<p>{{ album_count }} albums, {{ item_count }} items planned.</p>
+{% if mode == "copy" %}
+<p><strong>Symlinks unsupported on the target filesystem.</strong> Confirm copy mode to proceed.</p>
+{% endif %}
+{% endblock %}

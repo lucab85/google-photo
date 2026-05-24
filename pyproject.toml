@@ -1,0 +1,139 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "calendar-photo-organizer"
+version = "0.1.0.dev0"
+description = "Local-first tool that organizes a Google Photos / Takeout archive into event-based albums using Google Calendar history."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Calendar Photo Organizer Contributors" }]
+keywords = ["photos", "google-calendar", "takeout", "organizer", "local-first"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+    "typer>=0.12",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "google-auth>=2.28",
+    "google-auth-oauthlib>=1.2",
+    "google-api-python-client>=2.120",
+    "Pillow>=10.2",
+    "hachoir>=3.3",
+    "blake3>=0.4",
+    "keyring>=24.3",
+    "platformdirs>=4.2",
+    "structlog>=24.1",
+    "httpx>=0.27",
+    "tenacity>=8.2",
+    "sse-starlette>=2.0",
+]
+
+[project.optional-dependencies]
+heic = ["pillow-heif>=0.16"]
+google-photos = [
+    "google-api-python-client>=2.120",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "hypothesis>=6.98",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "pre-commit>=3.7",
+    "freezegun>=1.4",
+]
+
+[project.scripts]
+cpo = "calendar_photo_organizer.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/lberton/google-photo"
+Repository = "https://github.com/lberton/google-photo"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/calendar_photo_organizer"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/calendar_photo_organizer",
+    "README.md",
+    "LICENSE",
+]
+
+# ---------------------------------------------------------------------------
+# Ruff (T003)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "N", "RUF"]
+ignore = [
+    "E501",  # long lines OK in tests / docstrings
+    "B008",  # FastAPI Depends() is a common false positive
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["N802", "N803", "N806"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+# ---------------------------------------------------------------------------
+# Mypy (T004)
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+disallow_any_generics = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+files = ["src/calendar_photo_organizer"]
+plugins = []
+
+[[tool.mypy.overrides]]
+module = [
+    "hachoir.*",
+    "blake3",
+    "pillow_heif",
+    "googleapiclient.*",
+    "google_auth_oauthlib.*",
+    "sse_starlette.*",
+]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# Pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra --strict-markers --strict-config -m 'not slow'"
+testpaths = ["tests"]
+markers = [
+    "slow: long-running tests (excluded by default)",
+    "symlink: requires symlink privilege on the host filesystem",
+    "windows: Windows-only behaviour",
+    "google_photos: exercises the optional Google Photos integration",
+]
+asyncio_mode = "auto"
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning:google.*",
+]

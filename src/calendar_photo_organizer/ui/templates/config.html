@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Settings · Calendar Photo Organizer{% endblock %}
+{% block body %}
+<h2>Settings</h2>
+<form hx-post="/config" hx-ext="json-enc" hx-target="#cfg-result">
+  <fieldset>
+    <legend>Matching buffers</legend>
+    <label>Pre-buffer (hours):
+      <input type="number" step="0.25" min="0" name="pre_buffer_hours" value="{{ pre_buffer_hours }}" />
+    </label>
+    <label>Post-buffer (hours):
+      <input type="number" step="0.25" min="0" name="post_buffer_hours" value="{{ post_buffer_hours }}" />
+    </label>
+  </fieldset>
+  <fieldset>
+    <legend>Album behavior</legend>
+    <label>
+      <input type="checkbox" name="multi_album_membership" value="true" {% if multi_album %}checked{% endif %} />
+      Allow a media item to belong to multiple albums
+    </label>
+  </fieldset>
+  <fieldset>
+    <legend>Feature flags</legend>
+    <label>
+      <input type="checkbox" name="google_photos_enabled" value="true" {% if google_photos_enabled %}checked{% endif %} />
+      Enable Google Photos integration (Picker + Library API)
+    </label>
+  </fieldset>
+  <button type="submit">Save</button>
+</form>
+<div id="cfg-result" class="banner"></div>
+{% endblock %}

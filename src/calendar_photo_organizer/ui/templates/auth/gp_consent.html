@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Google Photos Consent{% endblock %}
+{% block body %}
+<h2>Google Photos integration</h2>
+<p>The optional Google Photos integration is enabled. Before proceeding you grant
+   <code>photoslibrary.appendonly</code> (upload to app-created albums only) and
+   the Picker scope. Your existing Google Photos library is <strong>never modified</strong>.</p>
+<form method="post" action="{{ action }}">
+  <button type="submit">Continue</button>
+</form>
+{% endblock %}

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block body %}
+<h2>Albums ({{ total }})</h2>
+<ul>
+  {% for a in albums %}
+    <li><a href="/albums/{{ a.id }}">{{ a.display_name }}</a> &mdash; {{ a.status }}</li>
+  {% endfor %}
+</ul>
+<p>Page {{ page }} (size {{ page_size }})</p>
+{% endblock %}

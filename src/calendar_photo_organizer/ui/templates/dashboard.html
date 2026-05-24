@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block body %}
+<h2>Dashboard</h2>
+<ul>
+  <li>Media items scanned: <strong>{{ media_count }}</strong></li>
+  <li>Calendar events imported: <strong>{{ event_count }}</strong></li>
+  <li>Proposed albums: <strong>{{ album_count }}</strong></li>
+  <li>Unmatched media: <strong>{{ unmatched_count }}</strong></li>
+</ul>
+<h3>Recommended matches by confidence</h3>
+<ul>
+  <li>High: {{ match_bands.high }}</li>
+  <li>Medium: {{ match_bands.medium }}</li>
+  <li>Low: {{ match_bands.low }}</li>
+</ul>
+{% endblock %}

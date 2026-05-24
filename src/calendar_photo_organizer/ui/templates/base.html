@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>{% block title %}Calendar Photo Organizer{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+  <header>
+    <h1><a href="/">Calendar Photo Organizer</a></h1>
+    <nav>
+      <a href="/">Dashboard</a> |
+      <a href="/albums">Albums</a> |
+      <a href="/unmatched">Unmatched</a>
+    </nav>
+  </header>
+  <main>{% block body %}{% endblock %}</main>
+</body>
+</html>
