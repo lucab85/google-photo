@@ -198,6 +198,8 @@ def cmd_videos(c, a):
         )
         if v["duration"] >= c.get("video", "min_transcribe_s", 20):
             videos.transcribe(path, lay.transcripts_dir, model, vad)
+        if not c.get("video", "keep_videos", False):
+            path.unlink(missing_ok=True)  # only our extracted copy; the original stays in the zip
     videos.save_manifest(lay.root, picked)
     res = vision.run(
         all_frames,
