@@ -48,7 +48,7 @@ Every step is idempotent, so re-running only processes what is new. To process *
 ## Photo classification (dossiers)
 
 - **kind**: `scene` (no prominent faces), `selfie` (only `owner_people` tagged), `crowd` (many small faces), or `people` (a third party may be in focus; **not publishable**).
-- **flags**: `badge`, `secret` (passwords or WiFi details), `contact` (email, LinkedIn, "connect with me"), `qr-only`, `utility`. Any flag makes a photo **not publishable**, and flagged text is kept out of the timeline.
+- **flags**: `badge`, `secret` (passwords or WiFi details), `contact` (email, LinkedIn, "connect with me"), `internal` (work screens: internal hostnames, image digests, shell prompts, network output), `qr-only`, `utility`. Any flag makes a photo **not publishable**, and flagged text is kept out of the timeline.
 - **event share**: the fraction of photos showing stage, screen, crowd or slide signals. Sessions below `event_share_min` are treated as personal and left out of the worklist.
 
 Automation doesn't catch everything. Reviewers must still zoom in for graffiti, laptop screens, other people's tweets or slides, and loosely related photos. See `prompts/WRITER_BRIEF.md` for the full rules.

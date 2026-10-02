@@ -16,6 +16,12 @@ BADGE = re.compile(
     re.I,
 )
 SECRET = re.compile(r"(pass ?word|wachtwoord|wifi|wi-fi|ssid|login|\bpin\b|iban)", re.I)
+# Work screens: internal hostnames, image digests, shell prompts, network/terminal output.
+INTERNAL = re.compile(
+    r"([a-z0-9-]+(-int|\.int|\.internal|\.corp|\.lan)\.[a-z0-9.-]+|preprod|sha256[:@-]|root@|\$ (kubectl|oc|ssh|curl)\b"
+    r"|LOOPBACK|BROADCAST|mtu \d+|You are logged in|Directory Listing for)",
+    re.I,
+)
 CONTACT = re.compile(
     r"(linkedin\.com/in/|[\w.+-]+@[\w-]+\.[\w.]+|connect with me|let'?s connect)", re.I
 )
@@ -66,6 +72,8 @@ def classify(v: dict, people: str = "", owners: tuple[str, ...] = ()) -> tuple[l
         flags.append("secret")
     if CONTACT.search(text):
         flags.append("contact")
+    if INTERNAL.search(text):
+        flags.append("internal")
     if v.get("codes") and n_lines <= 4:
         flags.append("qr-only")
     if v.get("utility"):
@@ -127,7 +135,7 @@ def build(
     )
     timeline, seen = [], set()
     for p in sorted(photos, key=lambda p: p["utc"]):
-        if set(p["flags"]) & {"badge", "secret", "contact"}:
+        if set(p["flags"]) & {"badge", "secret", "contact", "internal"}:
             continue
         new = [b for b in p["big"] if b.lower() not in seen]
         seen.update(b.lower() for b in new)
@@ -140,7 +148,7 @@ def build(
         f"{sum(p['kind'] == 'people' for p in photos)} people-in-focus, "
         + ", ".join(
             f"{sum(f in p['flags'] for p in photos)} {f}"
-            for f in ("badge", "secret", "contact", "qr-only", "utility")
+            for f in ("badge", "secret", "contact", "internal", "qr-only", "utility")
         ),
         "",
         "## Calendar hints (RSVPs — confirm with the photos)",

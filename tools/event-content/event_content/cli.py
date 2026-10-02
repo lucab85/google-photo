@@ -140,7 +140,7 @@ def _video_context(c) -> tuple[dict, dict]:
         seen = set()
         for v in sorted(by_frame_dir.get(stem, []), key=lambda v: v["path"]):
             flags, _, _ = dossiers.classify(v)
-            if set(flags) & {"badge", "secret", "contact"}:
+            if set(flags) & {"badge", "secret", "contact", "internal"}:
                 continue
             new = [b for b in dossiers.big_lines(v) if b.lower() not in seen]
             seen.update(b.lower() for b in new)

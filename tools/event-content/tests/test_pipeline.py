@@ -269,3 +269,14 @@ def test_processed_items_stay_candidates_after_their_part_is_deleted(tmp_path):
     }
     assert select.classify(row, FILTERS) == "media not in available zips"
     assert select.classify(row, FILTERS, {"PXL_20260323_120000000"}) == "image"
+
+
+def test_internal_work_screens_are_flagged():
+    shot = _v(
+        [
+            ('imageID: "quay-preprod-int.infra.example.corp/team/ubi9@sha256:11d5b4"', 0.05),
+            ("2: eth0: <BROADCAST,MULTICAST,UP> mtu 1500", 0.04),
+        ]
+    )
+    assert "internal" in dossiers.classify(shot)[0]
+    assert "internal" not in dossiers.classify(_v([("Scaling Argo CD", 0.2)]))[0]
