@@ -186,8 +186,18 @@ def cmd_videos(c, a):
     s = json.loads(lay.sessions_json.read_text())
     picked = videos.pick(vids, s, _event_ids(c))
     model, vad = c.path("video", "whisper_model"), c.path("video", "vad_model")
+    min_tr = c.get("video", "min_transcribe_s", 20)
+    previous = {m["title"]: m for m in videos.load_manifest(lay.root)}
     all_frames = []
     for v in picked:
+        stem = v["title"].rsplit(".", 1)[0]
+        prev = previous.get(v["title"], {})
+        frames_done = (lay.frames_dir / stem).is_dir()
+        transcript_done = (lay.transcripts_dir / f"{stem}.txt").exists()
+        if frames_done and "duration" in prev and (transcript_done or prev["duration"] < min_tr):
+            v["duration"] = prev["duration"]  # nothing left to do: don't re-extract from the zip
+            all_frames += sorted((lay.frames_dir / stem).glob("f*.jpg"))
+            continue
         path = videos.extract_video(v, lay.video_dir)
         v["duration"] = round(videos.duration(path))
         all_frames += videos.frames(
@@ -196,7 +206,7 @@ def cmd_videos(c, a):
             c.get("video", "frame_interval_s", 5),
             c.get("video", "dedupe_threshold", 6.0),
         )
-        if v["duration"] >= c.get("video", "min_transcribe_s", 20):
+        if v["duration"] >= min_tr:
             videos.transcribe(path, lay.transcripts_dir, model, vad)
         if not c.get("video", "keep_videos", False):
             path.unlink(missing_ok=True)  # only our extracted copy; the original stays in the zip
