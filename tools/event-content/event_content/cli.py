@@ -57,14 +57,17 @@ def cmd_index(c, a):
 
 def cmd_select(c, a):
     rows = takeout_index.read_index(c.layout.index_csv)
+    lay = c.layout
+    processed = {p.stem for p in lay.img_dir.glob("*.jpg")}  # analysed images
+    processed |= {p.name for p in lay.frames_dir.iterdir() if p.is_dir()}  # processed videos
     stats = select.select(
-        rows, c.raw.get("filters", {}), c.layout.candidates_csv, c.layout.videos_csv
+        rows, c.raw.get("filters", {}), lay.candidates_csv, lay.videos_csv, processed
     )
     print(json.dumps(dict(stats.most_common())))
 
 
 def cmd_extract(c, a):
-    rows = takeout_index.read_index(c.layout.candidates_csv)
+    rows = [r for r in takeout_index.read_index(c.layout.candidates_csv) if r.get("zip")]
     n, errs = extract.extract(
         rows, c.layout.img_dir, c.get("vision", "max_edge", 2100), c.get("vision", "workers", 8)
     )
@@ -199,14 +202,19 @@ def cmd_videos(c, a):
     model, vad = c.path("video", "whisper_model"), c.path("video", "vad_model")
     min_tr = c.get("video", "min_transcribe_s", 20)
     previous = {m["title"]: m for m in videos.load_manifest(lay.root)}
+    # Keep videos processed from earlier (possibly deleted) parts in the manifest.
+    have = {v["title"] for v in picked}
+    picked += [m for t, m in previous.items() if t not in have]
     all_frames = []
     for v in picked:
         stem = v["title"].rsplit(".", 1)[0]
         prev = previous.get(v["title"], {})
         frames_done = (lay.frames_dir / stem).is_dir()
         transcript_done = (lay.transcripts_dir / f"{stem}.txt").exists()
-        if frames_done and "duration" in prev and (transcript_done or prev["duration"] < min_tr):
-            v["duration"] = prev["duration"]  # nothing left to do: don't re-extract from the zip
+        done = frames_done and "duration" in prev and (transcript_done or prev["duration"] < min_tr)
+        if done or not (v.get("zip") and Path(v["zip"]).is_file()):
+            # Nothing left to do, or the part holding it is gone: reuse what we have.
+            v["duration"] = prev.get("duration", v.get("duration", 0))
             all_frames += sorted((lay.frames_dir / stem).glob("f*.jpg"))
             continue
         path = videos.extract_video(v, lay.video_dir)

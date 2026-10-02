@@ -256,3 +256,16 @@ def test_sidecars_survive_deleting_a_part(tmp_path):
     n = len(store.read_text().splitlines())
     takeout_index.build_index([zips[1]], tmp_path / "index3.csv", store)
     assert len(store.read_text().splitlines()) == n
+
+
+def test_processed_items_stay_candidates_after_their_part_is_deleted(tmp_path):
+    row = {
+        "utc": "2026-03-23T12:00:00Z",
+        "media_path": "",
+        "zip": "",
+        "album": "Photos from 2026",
+        "people": "",
+        "title": "PXL_20260323_120000000.jpg",
+    }
+    assert select.classify(row, FILTERS) == "media not in available zips"
+    assert select.classify(row, FILTERS, {"PXL_20260323_120000000"}) == "image"
