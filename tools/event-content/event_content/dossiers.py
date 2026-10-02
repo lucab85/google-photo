@@ -15,7 +15,13 @@ BADGE = re.compile(
     r"\b(ATTENDEE|SPEAKER|SPONSOR|EXHIBITOR|STAFF|VOLUNTEER|PRESS|MEDIA|ORGANI[SZ]ER|CO-LOCATED)\b",
     re.I,
 )
-SECRET = re.compile(r"(pass ?word|wachtwoord|wifi|wi-fi|ssid|login|\bpin\b|iban)", re.I)
+SECRET = re.compile(
+    r"(pass ?word|wachtwoord|wifi|wi-fi|ssid|login|\bpin\b|iban"
+    # API keys and tokens shown in terminals or editors during live demos.
+    r"|\bsk-[a-z]*-?[A-Za-z0-9_-]{12,}|\b(ghp|gho|github_pat|glpat|xox[abp])[-_][A-Za-z0-9_-]{10,}|\bAKIA[0-9A-Z]{16}\b"
+    r"|[A-Z_]*(API_KEY|TOKEN|SECRET)[A-Z_]*\s*[=:])",
+    re.I,
+)
 # Work screens: internal hostnames, image digests, shell prompts, network/terminal output.
 INTERNAL = re.compile(
     r"([a-z0-9-]+(-int|\.int|\.internal|\.corp|\.lan)\.[a-z0-9.-]+|preprod|sha256[:@-]|root@|\$ (kubectl|oc|ssh|curl)\b"

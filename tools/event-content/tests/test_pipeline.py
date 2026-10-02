@@ -293,3 +293,15 @@ def test_transcribe_skips_existing_pixel_transcript(tmp_path, monkeypatch):
     )
     assert out == tmp_path / "PXL_20260131_114025076.TS.txt"
     assert called == []  # no ffmpeg, no whisper
+
+
+def test_api_keys_on_screen_are_secret():
+    for text in (
+        "export ANTHROPIC_API_KEY=sk-ant-api03-AbCdEfGhIjKlMnOp",
+        "token: ghp_abcdefghijklmnop1234",
+        "GITLAB_TOKEN = glpat-abcdefghij123",
+    ):
+        flags, _, _ = dossiers.classify(
+            {"lines": [{"t": text, "h": 0.05}], "labels": [], "faces": []}
+        )
+        assert "secret" in flags, text
