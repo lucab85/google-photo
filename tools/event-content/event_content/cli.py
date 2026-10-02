@@ -160,6 +160,10 @@ def cmd_dossiers(c, a):
     cal = json.loads(lay.calendar_json.read_text()) if lay.calendar_json.exists() else {}
     vt, tr = _video_context(c)
     owners = tuple(c.get("filters", "owner_people", []))
+    current = {sess["id"] for sess in s}
+    for old in lay.dossier_dir.glob("S*.*"):  # sessions that changed after new parts merged in
+        if old.stem not in current:
+            old.unlink()
     n_event = 0
     for sess in s:
         md, data = dossiers.build(
