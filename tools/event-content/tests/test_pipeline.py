@@ -280,3 +280,16 @@ def test_internal_work_screens_are_flagged():
     )
     assert "internal" in dossiers.classify(shot)[0]
     assert "internal" not in dossiers.classify(_v([("Scaling Argo CD", 0.2)]))[0]
+
+
+def test_transcribe_skips_existing_pixel_transcript(tmp_path, monkeypatch):
+    from event_content import videos
+
+    (tmp_path / "PXL_20260131_114025076.TS.txt").write_text("already done")
+    called = []
+    monkeypatch.setattr(videos.subprocess, "run", lambda *a, **k: called.append(a))
+    out = videos.transcribe(
+        tmp_path / "PXL_20260131_114025076.TS.mp4", tmp_path, tmp_path / "model.bin", None
+    )
+    assert out == tmp_path / "PXL_20260131_114025076.TS.txt"
+    assert called == []  # no ffmpeg, no whisper

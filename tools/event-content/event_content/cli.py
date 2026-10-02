@@ -210,12 +210,13 @@ def cmd_videos(c, a):
     have = {v["title"] for v in picked}
     picked += [m for t, m in previous.items() if t not in have]
     all_frames = []
-    for v in picked:
+    for i, v in enumerate(picked, 1):
         stem = v["title"].rsplit(".", 1)[0]
         prev = previous.get(v["title"], {})
         frames_done = (lay.frames_dir / stem).is_dir()
         transcript_done = (lay.transcripts_dir / f"{stem}.txt").exists()
-        done = frames_done and "duration" in prev and (transcript_done or prev["duration"] < min_tr)
+        # Outputs on disk are the source of truth: a killed run never saved its manifest.
+        done = frames_done and (transcript_done or prev.get("duration", min_tr) < min_tr)
         if done or not (v.get("zip") and Path(v["zip"]).is_file()):
             # Nothing left to do, or the part holding it is gone: reuse what we have.
             v["duration"] = prev.get("duration", v.get("duration", 0))
@@ -233,6 +234,8 @@ def cmd_videos(c, a):
             videos.transcribe(path, lay.transcripts_dir, model, vad)
         if not c.get("video", "keep_videos", False):
             path.unlink(missing_ok=True)  # only our extracted copy; the original stays in the zip
+        if i % 10 == 0:  # checkpoint, so an interrupted run keeps its durations
+            videos.save_manifest(lay.root, [{**previous.get(p["title"], {}), **p} for p in picked])
     videos.save_manifest(lay.root, picked)
     orphans = [v for v in picked if v["session"].startswith("D")]
     lines = [

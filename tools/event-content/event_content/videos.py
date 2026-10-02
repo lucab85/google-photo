@@ -106,12 +106,13 @@ def frames(
 
 
 def transcribe(video: Path, out_dir: Path, model: Path, vad: Path | None) -> Path | None:
+    # Pixel names carry a second suffix (PXL_….TS.mp4); with_suffix() would drop ".TS".
     base = out_dir / video.stem
-    if (base.with_suffix(".txt")).exists():
-        return base.with_suffix(".txt")
+    txt, wav = Path(f"{base}.txt"), Path(f"{base}.wav")
+    if txt.exists():
+        return txt
     if not shutil.which("whisper-cli") or not model.is_file():
         return None
-    wav = base.with_suffix(".wav")
     subprocess.run(
         ["ffmpeg", "-v", "error", "-y", "-i", str(video), "-ac", "1", "-ar", "16000", str(wav)],
         check=True,
@@ -134,7 +135,7 @@ def transcribe(video: Path, out_dir: Path, model: Path, vad: Path | None) -> Pat
     with open(out_dir / "whisper.err", "a") as err:
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=err, check=False)
     wav.unlink(missing_ok=True)
-    return base.with_suffix(".txt") if base.with_suffix(".txt").exists() else None
+    return txt if txt.exists() else None
 
 
 def manifest_path(work: Path) -> Path:
