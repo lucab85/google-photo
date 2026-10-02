@@ -54,7 +54,26 @@ def is_sidecar(name: str) -> bool:
     )
 
 
-def iter_rows(zips: Iterable[Path]) -> Iterator[dict]:
+def load_store(store: Path | None) -> dict[str, dict]:
+    """Sidecars kept from earlier parts (name -> JSON), so a part can be deleted after processing."""
+    out: dict[str, dict] = {}
+    if store and store.exists():
+        with open(store) as fh:
+            for line in fh:
+                try:
+                    rec = json.loads(line)
+                    out[rec["name"]] = rec["data"]
+                except (ValueError, KeyError):
+                    continue
+    return out
+
+
+def iter_rows(zips: Iterable[Path], store: Path | None = None) -> Iterator[dict]:
+    """Rows for every sidecar seen so far (current zips + the persistent store).
+
+    Media are resolved against the zips available now; sidecars found in the zips are
+    appended to the store so their metadata survives when that part is removed.
+    """
     zips = list(zips)
     media_loc: dict[str, str] = {}
     for zp in zips:
@@ -62,27 +81,39 @@ def iter_rows(zips: Iterable[Path]) -> Iterator[dict]:
             for n in z.namelist():
                 if not n.endswith(".json") and not n.endswith("/"):
                     media_loc.setdefault(n, str(zp))
+    sidecars = load_store(store)
+    new: dict[str, dict] = {}
     for zp in zips:
         with zipfile.ZipFile(zp) as z:
             for n in z.namelist():
-                if not is_sidecar(n):
+                if not is_sidecar(n) or n in sidecars or n in new:
                     continue
                 try:
-                    row = parse_sidecar(n, json.loads(z.read(n)))
-                except (ValueError, KeyError):
+                    new[n] = json.loads(z.read(n))
+                except ValueError:
                     continue
-                if not row:
-                    continue
-                media = f"{row.pop('_dir')}/{row['title']}"
-                row["media_path"] = media if media in media_loc else ""
-                row["zip"] = media_loc.get(media, "")
-                yield row
+    if store and new:
+        store.parent.mkdir(parents=True, exist_ok=True)
+        with open(store, "a") as fh:
+            for n, d in new.items():
+                fh.write(json.dumps({"name": n, "data": d}) + "\n")
+    for n, d in {**sidecars, **new}.items():
+        try:
+            row = parse_sidecar(n, d)
+        except (ValueError, KeyError, TypeError):
+            continue
+        if not row:
+            continue
+        media = f"{row.pop('_dir')}/{row['title']}"
+        row["media_path"] = media if media in media_loc else ""
+        row["zip"] = media_loc.get(media, "")
+        yield row
 
 
-def build_index(zips: Iterable[Path], out_csv: Path) -> dict:
+def build_index(zips: Iterable[Path], out_csv: Path, store: Path | None = None) -> dict:
     """Write index.csv (sorted by time, de-duplicated by media path or title+time)."""
     seen, rows = set(), []
-    for r in iter_rows(zips):
+    for r in iter_rows(zips, store):
         key = r["media_path"] or (r["title"], r["utc"])
         if key in seen:
             continue

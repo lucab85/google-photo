@@ -27,6 +27,10 @@ class Layout:
         return self.root / "index.csv"
 
     @property
+    def sidecars_jsonl(self) -> Path:
+        return self.root / "sidecars.jsonl"
+
+    @property
     def candidates_csv(self) -> Path:
         return self.root / "candidates.csv"
 

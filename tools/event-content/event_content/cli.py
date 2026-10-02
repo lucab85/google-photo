@@ -47,7 +47,10 @@ def cmd_index(c, a):
         sys.exit(f"no zips match {c.get('paths', 'takeout_glob')}")
     print(
         json.dumps(
-            {"zips": [z.name for z in zips], **takeout_index.build_index(zips, c.layout.index_csv)}
+            {
+                "zips": [z.name for z in zips],
+                **takeout_index.build_index(zips, c.layout.index_csv, c.layout.sidecars_jsonl),
+            }
         )
     )
 
@@ -185,6 +188,14 @@ def cmd_videos(c, a):
     vids = takeout_index.read_index(lay.videos_csv)
     s = json.loads(lay.sessions_json.read_text())
     picked = videos.pick(vids, s, _event_ids(c))
+    since = c.get("video", "include_all_since", "")
+    if since:  # also own videos recorded outside photo sessions (e.g. interviews with no photos)
+        have = {v["title"] for v in picked}
+        picked += [
+            {**v, "session": f"D{v['utc'][:10].replace('-', '')}"}
+            for v in vids
+            if v["utc"][:10] >= since and v["title"] not in have and v.get("media_path")
+        ]
     model, vad = c.path("video", "whisper_model"), c.path("video", "vad_model")
     min_tr = c.get("video", "min_transcribe_s", 20)
     previous = {m["title"]: m for m in videos.load_manifest(lay.root)}
@@ -211,6 +222,16 @@ def cmd_videos(c, a):
         if not c.get("video", "keep_videos", False):
             path.unlink(missing_ok=True)  # only our extracted copy; the original stays in the zip
     videos.save_manifest(lay.root, picked)
+    orphans = [v for v in picked if v["session"].startswith("D")]
+    lines = [
+        "# Videos outside photo sessions (review: interviews/talks recorded without photos)",
+        "",
+    ]
+    for v in sorted(orphans, key=lambda v: v["utc"]):
+        t = lay.transcripts_dir / f"{v['title'].rsplit('.', 1)[0]}.txt"
+        text = " ".join(t.read_text().split())[:400] if t.exists() else "(no transcript)"
+        lines.append(f"- {v['utc'][:16]}Z {v['title']} ({v.get('duration', 0)}s): {text}")
+    (lay.root / "orphan-videos.md").write_text("\n".join(lines) + "\n")
     res = vision.run(
         all_frames,
         lay.frames_vision_jsonl,

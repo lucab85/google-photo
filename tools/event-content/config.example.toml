@@ -57,6 +57,8 @@ padding_minutes = 60
 frame_interval_s = 5
 dedupe_threshold = 6.0            # mean abs pixel diff on 64x36 grayscale; lower = keep more
 min_transcribe_s = 20
+# Also process own videos from this date on even outside photo sessions ("" = only event sessions).
+include_all_since = ""
 # Delete our extracted copy of each video after frames + transcript (originals stay in the zip).
 keep_videos = false
 whisper_model = "~/.cache/whisper-cpp/ggml-large-v3.bin"

@@ -236,3 +236,23 @@ def test_export_falls_back_to_analysis_copy_when_zip_is_gone(tmp_path):
     }
     im = export_images.load(row, tmp_path, ("PXL_",))
     assert im.size == (2100, 1400)
+
+
+def test_sidecars_survive_deleting_a_part(tmp_path):
+    """Sidecar in part 1, media in part 2: after part 1 is deleted the media still gets its metadata."""
+    zips = _takeout(tmp_path)
+    store = tmp_path / "sidecars.jsonl"
+    takeout_index.build_index(zips, tmp_path / "index.csv", store)
+    zips[0].unlink()  # owner deletes part 1 after processing
+    takeout_index.build_index([zips[1]], tmp_path / "index2.csv", store)
+    rows = takeout_index.read_index(tmp_path / "index2.csv")
+    second = next(r for r in rows if r["title"] == "PXL_20260323_120500000.jpg")
+    assert (
+        second["utc"] == "2026-03-23T12:05:00Z"
+        and second["lat"]
+        and second["zip"].endswith("takeout-002.zip")
+    )
+    # The store is append-only and not duplicated on re-index.
+    n = len(store.read_text().splitlines())
+    takeout_index.build_index([zips[1]], tmp_path / "index3.csv", store)
+    assert len(store.read_text().splitlines()) == n
