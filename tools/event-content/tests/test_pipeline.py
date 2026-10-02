@@ -225,3 +225,14 @@ def test_export_rejects_non_own_camera(tmp_path):
     except ValueError:
         return
     raise AssertionError("expected ValueError")
+
+
+def test_export_falls_back_to_analysis_copy_when_zip_is_gone(tmp_path):
+    Image.new("RGB", (2100, 1400), (10, 20, 30)).save(tmp_path / "PXL_20260323_120000000.jpg")
+    row = {
+        "title": "PXL_20260323_120000000.jpg",
+        "zip": str(tmp_path / "gone.zip"),
+        "media_path": "x",
+    }
+    im = export_images.load(row, tmp_path, ("PXL_",))
+    assert im.size == (2100, 1400)
