@@ -14,6 +14,7 @@ Each deep-dive post currently has one reused image. Add **3–5 more real photos
 
 ## Rules
 1. Only photos from `publishable[]` (or `all[]` entries that are kind scene/selfie/crowd with empty flags). Never badges, QR-only photos, contact slides (emails, LinkedIn, handles), passwords, internal URLs or laptop screens, or third parties in close-up.
+   - Zoom into every projected screen: presenters' browser address bars often show private links (Google Slides/Docs/Drive edit URLs, internal dashboards), and terminals can show API keys. Pixelate those areas after export, or pick another photo. OCR misses small URL text, so look with your own eyes.
 2. Prefer photos NOT already used in the event's recap post (check `grep -o '/blog/events/[^)]*' <recap>.mdx`). Never duplicate an image already in the same post.
 3. Markdown: `![descriptive alt](/blog/events/<post-slug>/<name>.jpg)` followed by an italic caption such as `*A slide from <talk> at <event>: <what it shows>.*`. The caption describes what's on the slide. Don't attribute the tutorial's advice to the speaker, and don't name anyone unless the recap already names them as the speaker of that talk.
 4. Don't change the technical content. Only add the images and captions, plus `lastModified: "2026-10-02"`. Keep the MDX valid (blank lines around images; no stray `{` `<`).
