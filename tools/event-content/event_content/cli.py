@@ -113,8 +113,8 @@ def cmd_preserve(c, a):
     min_tr = c.get("video", "min_transcribe_s", 20)
     for v in vids:
         stem = v["title"].rsplit(".", 1)[0]
-        if (lay.frames_dir / stem).is_dir() and (lay.transcripts_dir / f"{stem}.txt").exists():
-            continue
+        if (lay.frames_dir / stem).is_dir():
+            continue  # already preserved (short clips never get a transcript, so don't require one)
         path = videos.extract_video(v, lay.video_dir)
         videos.frames(
             path,

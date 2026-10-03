@@ -406,3 +406,28 @@ def test_takeout_glob_accepts_several_locations(tmp_path):
         "takeout-x-001.zip",
         "takeout-x-002.zip",
     ]
+
+
+def test_preserve_does_not_redo_short_videos(tmp_path, monkeypatch):
+    from event_content import cli, videos
+    from event_content import config as cfgmod
+
+    part = tmp_path / "takeout-020.zip"
+    with zipfile.ZipFile(part, "w") as z:
+        z.writestr("Takeout/Google Photos/Photos from 2026/PXL_20260925_171000000.mp4", b"x")
+    cfg = tmp_path / "c.toml"
+    cfg.write_text(
+        f'[paths]\ntakeout_glob = "{part}"\nwork_dir = "{tmp_path / "work"}"\n'
+        '[filters]\nown_camera_prefixes = ["PXL_"]\nvideo_extensions = [".mp4"]\n'
+    )
+    c = cfgmod.load(cfg)
+    cli.cmd_index(c, None)
+    calls = []
+    monkeypatch.setattr(videos, "duration", lambda p: 5.0)  # too short to transcribe
+    monkeypatch.setattr(
+        videos, "frames", lambda p, d, *a: calls.append(1) or (d / p.stem).mkdir(parents=True)
+    )
+    monkeypatch.setattr(videos, "transcribe", lambda *a: None)
+    cli.cmd_preserve(c, None)
+    cli.cmd_preserve(c, None)
+    assert calls == [1]
