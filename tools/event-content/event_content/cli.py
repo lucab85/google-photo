@@ -76,6 +76,49 @@ def cmd_extract(c, a):
         print("  ", e)
 
 
+def cmd_preserve(c, a):
+    """Copy own-camera photos that have no sidecar yet (it sits in a part not downloaded yet).
+
+    Takeout often puts a photo and its JSON in different parts. Saving an analysis copy now
+    lets you delete this part: when the sidecar arrives, `select` keeps the photo because it
+    is already in img/, and the privacy filters run on its albums/people as usual.
+    """
+    import zipfile
+
+    indexed = {r["media_path"] for r in takeout_index.read_index(c.layout.index_csv)}
+    prefixes = tuple(c.get("filters", "own_camera_prefixes", ["PXL_"]))
+    image_ext = tuple(e.lower() for e in c.get("filters", "image_extensions", [".jpg", ".jpeg"]))
+    video_ext = tuple(e.lower() for e in c.get("filters", "video_extensions", [".mp4", ".mov"]))
+    rows, videos_left = [], 0
+    for zp in c.takeout_zips():
+        with zipfile.ZipFile(zp) as z:
+            for n in z.namelist():
+                title = n.rsplit("/", 1)[-1]
+                low = title.lower()
+                if n.endswith((".json", "/")) or n in indexed or not title.startswith(prefixes):
+                    continue
+                if low.endswith(video_ext):
+                    # Needs session context: keep the part until its sidecar arrives.
+                    videos_left += 1
+                    continue
+                if not low.endswith(image_ext):
+                    continue  # e.g. PXL_….MP, the clip half of a Motion Photo (still is .MP.jpg)
+                rows.append({"zip": str(zp), "media_path": n, "title": title})
+    n, errs = extract.extract(
+        rows, c.layout.img_dir, c.get("vision", "max_edge", 2100), c.get("vision", "workers", 8)
+    )
+    print(
+        json.dumps(
+            {
+                "awaiting_sidecar": len(rows),
+                "preserved_now": n,
+                "errors": len(errs),
+                "videos_awaiting_sidecar": videos_left,
+            }
+        )
+    )
+
+
 def cmd_vision(c, a):
     rows = takeout_index.read_index(c.layout.candidates_csv)
     imgs = [c.layout.img_dir / f"{r['title'].rsplit('.', 1)[0]}.jpg" for r in rows]
@@ -322,6 +365,7 @@ STEPS = {
     "index": cmd_index,
     "select": cmd_select,
     "extract": cmd_extract,
+    "preserve": cmd_preserve,
     "vision": cmd_vision,
     "sessions": cmd_sessions,
     "calendar": cmd_calendar,

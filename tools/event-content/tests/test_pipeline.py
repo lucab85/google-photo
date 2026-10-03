@@ -305,3 +305,33 @@ def test_api_keys_on_screen_are_secret():
             {"lines": [{"t": text, "h": 0.05}], "labels": [], "faces": []}
         )
         assert "secret" in flags, text
+
+
+def test_preserve_saves_photos_whose_sidecar_is_in_a_later_part(tmp_path, capsys):
+    from event_content import cli
+    from event_content import config as cfgmod
+
+    base = "Takeout/Google Photos/Photos from 2026/"
+    part = tmp_path / "takeout-002.zip"
+    with zipfile.ZipFile(part, "w") as z:
+        z.writestr(base + "PXL_20260323_130000000.jpg", _jpeg())  # sidecar not here
+        z.writestr(base + "IMG-20260323-WA0002.jpg", _jpeg())  # not own camera
+        z.writestr(base + "PXL_20260323_130000000.MP", b"clip")  # Motion Photo clip half
+        z.writestr(base + "PXL_20260323_130500000.jpg", _jpeg())
+        z.writestr(
+            base + "PXL_20260323_130500000.jpg.supplemental-metadata.json",
+            _sidecar("PXL_20260323_130500000.jpg", 1774270800),
+        )
+    cfg = tmp_path / "c.toml"
+    cfg.write_text(
+        f'[paths]\ntakeout_glob = "{part}"\nwork_dir = "{tmp_path / "work"}"\n'
+        '[filters]\nown_camera_prefixes = ["PXL_"]\n[vision]\nworkers = 1\n'
+    )
+    c = cfgmod.load(cfg)
+    cli.cmd_index(c, None)
+    cli.cmd_preserve(c, None)
+    assert '"errors": 0' in capsys.readouterr().out
+    img = c.layout.img_dir
+    assert (img / "PXL_20260323_130000000.jpg").exists()  # saved before the part is deleted
+    assert not (img / "PXL_20260323_130500000.jpg").exists()  # indexed: the normal extract step
+    assert not (img / "IMG-20260323-WA0002.jpg").exists()

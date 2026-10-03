@@ -35,6 +35,7 @@ Calendar hints come from the calendar-photo-organizer catalog. Run `cpo auth goo
 | `index` | Reads every JSON sidecar in all zips and maps each media file to the zip that contains it (parts are often split). | `index.csv` |
 | `select` | Privacy filter: own-camera prefixes, no received or screenshot files, no private albums or people, optional date range. Also separates images from videos. | `candidates.csv`, `videos.csv` |
 | `extract` | Analysis copies, ~2100 px, EXIF dropped. | `img/` |
+| `preserve` | Saves analysis copies of own-camera photos whose sidecar is in a part you haven't downloaded yet, so you can delete this part. When the sidecar arrives, `select` keeps them and the privacy filters run as usual. Skips Motion Photo clip halves (`PXL_….MP`). | `img/` |
 | `vision` | Apple Vision OCR, QR codes, labels, faces and aesthetics. Runs in chunks and resumes. | `vision.jsonl` |
 | `sessions` | Groups photos into bursts separated by more than `gap_minutes`, in local time (configured zone, or derived from longitude abroad). | `sessions.json` |
 | `calendar` | Attaches overlapping calendar events. Private keywords are filtered out. | `calendar-matches.json` |
@@ -42,6 +43,8 @@ Calendar hints come from the calendar-photo-organizer catalog. Run `cpo auth goo
 | `videos` | For event-like sessions: frames every N seconds (near-duplicates removed) through Vision, plus audio through whisper.cpp with VAD. | `vframes/`, `transcripts/` |
 | `sheet SID` | Contact sheet of a session (`pub` = publishable only, or `all`). | `sheets/` |
 | `export SLUG TITLE=name … [--thumb TITLE]` | Writes web images (≤1280 px, ≤300 KB, no EXIF) and a 1200×630 thumbnail into the blog repo. Falls back to the analysis copies if the zip is gone. | `static/blog/events/SLUG/` |
+
+**Before deleting a part**, run `./run.sh preserve`: a photo and its sidecar are often in different parts.
 
 Every step is idempotent, so re-running only processes what is new. To process **another archive**, give it its own config with a different `work_dir` (`EC_CONFIG=other.toml ./run.sh all`). If you're processing **one Takeout part at a time** because of disk space, process a part, keep `work_dir`, then point `takeout_glob` at the next part. Exports keep working from the analysis copies.
 
