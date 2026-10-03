@@ -107,8 +107,12 @@ class Config:
         return Layout(self.path("paths", "work_dir")).ensure()
 
     def takeout_zips(self) -> list[Path]:
-        pattern = os.path.expanduser(self.get("paths", "takeout_glob", ""))
-        return sorted(Path(p) for p in glob.glob(pattern))
+        """Zips matching `takeout_glob`: one pattern, or a list (e.g. Downloads + an external disk)."""
+        patterns = self.get("paths", "takeout_glob", "")
+        if isinstance(patterns, str):
+            patterns = [patterns]
+        found = {Path(p) for pat in patterns for p in glob.glob(os.path.expanduser(pat))}
+        return sorted(found, key=lambda p: p.name)
 
 
 def load(path: str | Path | None = None) -> Config:

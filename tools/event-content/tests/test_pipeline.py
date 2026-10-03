@@ -388,3 +388,21 @@ def test_preserve_processes_videos_whose_sidecar_is_in_a_later_part(tmp_path, mo
     assert not (c.layout.video_dir / f"{stem}.mp4").exists()  # local copy removed
     cli.cmd_preserve(c, None)  # idempotent: nothing redone
     assert calls == ["frames", "transcribe"]
+
+
+def test_takeout_glob_accepts_several_locations(tmp_path):
+    from event_content import config as cfgmod
+
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    (tmp_path / "a" / "takeout-x-001.zip").write_bytes(b"")
+    (tmp_path / "b" / "takeout-x-002.zip").write_bytes(b"")
+    cfg = tmp_path / "c.toml"
+    cfg.write_text(
+        f'[paths]\ntakeout_glob = ["{tmp_path}/a/takeout-*.zip", "{tmp_path}/b/takeout-*.zip"]\n'
+        f'work_dir = "{tmp_path / "w"}"\n'
+    )
+    assert [p.name for p in cfgmod.load(cfg).takeout_zips()] == [
+        "takeout-x-001.zip",
+        "takeout-x-002.zip",
+    ]

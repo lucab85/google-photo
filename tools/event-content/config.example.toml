@@ -4,6 +4,8 @@
 [paths]
 # One or more Takeout zips (glob). JSON sidecars and media can live in different parts.
 takeout_glob = "~/Downloads/takeout-*.zip"
+# or several locations, e.g. Downloads plus an external disk:
+# takeout_glob = ["~/Downloads/takeout-*.zip", "/Volumes/External/takeouts/takeout-*.zip"]
 # Persistent working directory for all derived data (index, OCR, dossiers, transcripts).
 work_dir = "~/takeout-event-work"
 # Blog repo where export-images writes web-sized photos.
