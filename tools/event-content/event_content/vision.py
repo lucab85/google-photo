@@ -30,13 +30,15 @@ def done_paths(jsonl: Path) -> set[str]:
 def run(images: list[Path], jsonl: Path, chunk: int = 150, languages: str = "en-US") -> dict:
     if not VANALYZE.exists():
         raise SystemExit(f"{VANALYZE} missing: run vision/build.sh first")
-    todo = [str(p) for p in images if str(p) not in done_paths(jsonl)]
+    done = done_paths(jsonl)  # read once: calling it per image is quadratic on big archives
+    todo = [str(p) for p in images if str(p) not in done]
     env = {**os.environ, "VANALYZE_LANGS": languages}
     for i in range(0, len(todo), chunk):
         batch = "\n".join(todo[i : i + chunk]) + "\n"
         with open(jsonl, "a") as out:
             subprocess.run([str(VANALYZE)], input=batch, text=True, stdout=out, env=env, check=True)
-    missing = [p for p in todo if p not in done_paths(jsonl)]
+    done = done_paths(jsonl)
+    missing = [p for p in todo if p not in done]
     if missing:  # one retry for anything still missing
         with open(jsonl, "a") as out:
             subprocess.run(

@@ -335,3 +335,19 @@ def test_preserve_saves_photos_whose_sidecar_is_in_a_later_part(tmp_path, capsys
     assert (img / "PXL_20260323_130000000.jpg").exists()  # saved before the part is deleted
     assert not (img / "PXL_20260323_130500000.jpg").exists()  # indexed: the normal extract step
     assert not (img / "IMG-20260323-WA0002.jpg").exists()
+
+
+def test_vision_reads_the_results_file_once(tmp_path, monkeypatch):
+    from event_content import vision
+
+    jsonl = tmp_path / "vision.jsonl"
+    imgs = [tmp_path / f"img{i}.jpg" for i in range(50)]
+    jsonl.write_text("".join(json.dumps({"path": str(p)}) + "\n" for p in imgs))
+    calls = []
+    real = vision.done_paths
+    monkeypatch.setattr(vision, "done_paths", lambda j: calls.append(1) or real(j))
+    monkeypatch.setattr(vision, "VANALYZE", tmp_path / "img0.jpg")  # any existing path
+    imgs[0].write_bytes(b"x")
+    res = vision.run(imgs, jsonl)
+    assert res["analysed_now"] == 0 and res["still_missing"] == 0
+    assert len(calls) <= 3  # not once per image
