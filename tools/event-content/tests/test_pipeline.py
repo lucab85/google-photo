@@ -351,3 +351,40 @@ def test_vision_reads_the_results_file_once(tmp_path, monkeypatch):
     res = vision.run(imgs, jsonl)
     assert res["analysed_now"] == 0 and res["still_missing"] == 0
     assert len(calls) <= 3  # not once per image
+
+
+def test_preserve_processes_videos_whose_sidecar_is_in_a_later_part(tmp_path, monkeypatch):
+    from event_content import cli, videos
+    from event_content import config as cfgmod
+
+    base = "Takeout/Google Photos/Photos from 2026/"
+    part = tmp_path / "takeout-019.zip"
+    with zipfile.ZipFile(part, "w") as z:
+        z.writestr(base + "PXL_20260925_170000000.TS.mp4", b"fake video")
+    cfg = tmp_path / "c.toml"
+    cfg.write_text(
+        f'[paths]\ntakeout_glob = "{part}"\nwork_dir = "{tmp_path / "work"}"\n'
+        '[filters]\nown_camera_prefixes = ["PXL_"]\nvideo_extensions = [".mp4"]\n'
+        "[vision]\nworkers = 1\n"
+    )
+    c = cfgmod.load(cfg)
+    cli.cmd_index(c, None)
+    calls = []
+    monkeypatch.setattr(videos, "duration", lambda p: 60.0)
+    monkeypatch.setattr(
+        videos,
+        "frames",
+        lambda p, d, *a: calls.append("frames") or (d / p.stem).mkdir(parents=True),
+    )
+    monkeypatch.setattr(
+        videos,
+        "transcribe",
+        lambda p, d, *a: calls.append("transcribe") or (d / f"{p.stem}.txt").write_text("hi"),
+    )
+    cli.cmd_preserve(c, None)
+    stem = "PXL_20260925_170000000.TS"
+    assert (c.layout.frames_dir / stem).is_dir()
+    assert (c.layout.transcripts_dir / f"{stem}.txt").exists()
+    assert not (c.layout.video_dir / f"{stem}.mp4").exists()  # local copy removed
+    cli.cmd_preserve(c, None)  # idempotent: nothing redone
+    assert calls == ["frames", "transcribe"]

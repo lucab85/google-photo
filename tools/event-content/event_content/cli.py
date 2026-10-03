@@ -89,7 +89,7 @@ def cmd_preserve(c, a):
     prefixes = tuple(c.get("filters", "own_camera_prefixes", ["PXL_"]))
     image_ext = tuple(e.lower() for e in c.get("filters", "image_extensions", [".jpg", ".jpeg"]))
     video_ext = tuple(e.lower() for e in c.get("filters", "video_extensions", [".mp4", ".mov"]))
-    rows, videos_left = [], 0
+    rows, vids = [], []
     for zp in c.takeout_zips():
         with zipfile.ZipFile(zp) as z:
             for n in z.namelist():
@@ -98,8 +98,7 @@ def cmd_preserve(c, a):
                 if n.endswith((".json", "/")) or n in indexed or not title.startswith(prefixes):
                     continue
                 if low.endswith(video_ext):
-                    # Needs session context: keep the part until its sidecar arrives.
-                    videos_left += 1
+                    vids.append({"zip": str(zp), "media_path": n, "title": title})
                     continue
                 if not low.endswith(image_ext):
                     continue  # e.g. PXL_….MP, the clip half of a Motion Photo (still is .MP.jpg)
@@ -107,13 +106,35 @@ def cmd_preserve(c, a):
     n, errs = extract.extract(
         rows, c.layout.img_dir, c.get("vision", "max_edge", 2100), c.get("vision", "workers", 8)
     )
+    # Videos: frames + transcript now, so `videos` finds them done once the sidecar arrives
+    # (it treats a clip with frames and a transcript as processed, zip or no zip).
+    lay, vdone = c.layout, 0
+    model, vad = c.path("video", "whisper_model"), c.path("video", "vad_model")
+    min_tr = c.get("video", "min_transcribe_s", 20)
+    for v in vids:
+        stem = v["title"].rsplit(".", 1)[0]
+        if (lay.frames_dir / stem).is_dir() and (lay.transcripts_dir / f"{stem}.txt").exists():
+            continue
+        path = videos.extract_video(v, lay.video_dir)
+        videos.frames(
+            path,
+            lay.frames_dir,
+            c.get("video", "frame_interval_s", 5),
+            c.get("video", "dedupe_threshold", 6.0),
+        )
+        if videos.duration(path) >= min_tr:
+            videos.transcribe(path, lay.transcripts_dir, model, vad)
+        if not c.get("video", "keep_videos", False):
+            path.unlink(missing_ok=True)
+        vdone += 1
     print(
         json.dumps(
             {
                 "awaiting_sidecar": len(rows),
                 "preserved_now": n,
                 "errors": len(errs),
-                "videos_awaiting_sidecar": videos_left,
+                "videos_awaiting_sidecar": len(vids),
+                "videos_preserved_now": vdone,
             }
         )
     )
