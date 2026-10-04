@@ -113,10 +113,16 @@ def transcribe(video: Path, out_dir: Path, model: Path, vad: Path | None) -> Pat
         return txt
     if not shutil.which("whisper-cli") or not model.is_file():
         return None
-    subprocess.run(
+    audio = subprocess.run(
         ["ffmpeg", "-v", "error", "-y", "-i", str(video), "-ac", "1", "-ar", "16000", str(wav)],
-        check=True,
+        check=False,
     )
+    if audio.returncode != 0 or not wav.is_file():
+        # No usable audio track (e.g. Google Photos "RESTORED" clips): mark as done with an
+        # empty transcript so later runs don't extract the video again.
+        wav.unlink(missing_ok=True)
+        txt.write_text("")
+        return txt
     cmd = [
         "whisper-cli",
         "-m",
