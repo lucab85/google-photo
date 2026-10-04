@@ -105,11 +105,30 @@ def frames(
     return sorted(od.glob("f*.jpg"))
 
 
-def transcribe(video: Path, out_dir: Path, model: Path, vad: Path | None) -> Path | None:
+def detected_language(base: Path) -> str | None:
+    """Language whisper-cli reported in its JSON output (result.language), if any."""
+    try:
+        data = json.loads(Path(f"{base}.json").read_text())
+    except (OSError, ValueError):
+        return None
+    return (data.get("result") or {}).get("language")
+
+
+def transcribe(
+    video: Path,
+    out_dir: Path,
+    model: Path,
+    vad: Path | None,
+    languages: tuple[str, ...] = ("en", "it", "nl"),
+    force: str | None = None,
+) -> Path | None:
+    """Transcribe with language auto-detection. On noisy audio whisper often "detects" Latin,
+    Welsh or Slovenian and returns gibberish, so if the detected language is not one of
+    `languages`, run again forced to the first of them. `force` skips detection (re-runs)."""
     # Pixel names carry a second suffix (PXL_….TS.mp4); with_suffix() would drop ".TS".
     base = out_dir / video.stem
     txt, wav = Path(f"{base}.txt"), Path(f"{base}.wav")
-    if txt.exists():
+    if txt.exists() and not force:
         return txt
     if not shutil.which("whisper-cli") or not model.is_file():
         return None
@@ -123,23 +142,16 @@ def transcribe(video: Path, out_dir: Path, model: Path, vad: Path | None) -> Pat
         wav.unlink(missing_ok=True)
         txt.write_text("")
         return txt
-    cmd = [
-        "whisper-cli",
-        "-m",
-        str(model),
-        "-l",
-        "auto",
-        "-oj",
-        "-otxt",
-        "-of",
-        str(base),
-        "-f",
-        str(wav),
-    ]
-    if vad and vad.is_file():
-        cmd[1:1] = ["--vad", "--vad-model", str(vad)]
-    with open(out_dir / "whisper.err", "a") as err:
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=err, check=False)
+    def run(lang: str) -> None:
+        cmd = ["whisper-cli", "-m", str(model), "-l", lang, "-oj", "-otxt", "-of", str(base), "-f", str(wav)]
+        if vad and vad.is_file():
+            cmd[1:1] = ["--vad", "--vad-model", str(vad)]
+        with open(out_dir / "whisper.err", "a") as err:
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=err, check=False)
+
+    run(force or "auto")
+    if not force and languages and detected_language(base) not in languages:
+        run(languages[0])
     wav.unlink(missing_ok=True)
     return txt if txt.exists() else None
 
