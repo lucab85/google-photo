@@ -1,0 +1,433 @@
+"""Unit tests for the non-trivial logic: indexing, privacy filters, sessions, calendar, classification, export."""
+
+from __future__ import annotations
+
+import io
+import json
+import zipfile
+from pathlib import Path
+
+from event_content import calendar_match, dossiers, export_images, select, sessions, takeout_index
+from PIL import Image
+
+FILTERS = {
+    "own_camera_prefixes": ["PXL_"],
+    "exclude_title_substrings": ["-WA", "Screenshot"],
+    "exclude_albums": ["Family"],
+    "exclude_people_substrings": ["grandma"],
+    "image_extensions": [".jpg"],
+    "video_extensions": [".mp4"],
+}
+
+
+def _jpeg(exif_gps: bool = False) -> bytes:
+    im = Image.new("RGB", (3000, 2000), (120, 30, 200))
+    buf = io.BytesIO()
+    if exif_gps:
+        ex = Image.Exif()
+        ex[0x010F] = "TestCam"  # Make
+        im.save(buf, "JPEG", exif=ex.tobytes())
+    else:
+        im.save(buf, "JPEG")
+    return buf.getvalue()
+
+
+def _sidecar(
+    title: str, ts: int, lat: float = 52.37, lon: float = 4.89, people: list[str] | None = None
+) -> bytes:
+    return json.dumps(
+        {
+            "title": title,
+            "photoTakenTime": {"timestamp": str(ts)},
+            "geoData": {"latitude": lat, "longitude": lon},
+            "people": [{"name": p} for p in (people or [])],
+        }
+    ).encode()
+
+
+def _takeout(tmp: Path) -> list[Path]:
+    """Two parts: the sidecar for one photo lives in part 1, its media in part 2."""
+    base = "Takeout/Google Photos/Photos from 2026/"
+    p1, p2 = tmp / "takeout-001.zip", tmp / "takeout-002.zip"
+    with zipfile.ZipFile(p1, "w") as z:
+        z.writestr(
+            base + "PXL_20260323_120000000.jpg.supplemental-metadata.json",
+            _sidecar("PXL_20260323_120000000.jpg", 1774267200),
+        )
+        z.writestr(
+            base + "PXL_20260323_120500000.jpg.supplemental-metadata.json",
+            _sidecar("PXL_20260323_120500000.jpg", 1774267500),
+        )
+        z.writestr(base + "PXL_20260323_120000000.jpg", _jpeg(exif_gps=True))
+        z.writestr(base + "metadata.json", b"{}")
+    with zipfile.ZipFile(p2, "w") as z:
+        z.writestr(base + "PXL_20260323_120500000.jpg", _jpeg())
+        z.writestr(
+            "Takeout/Google Photos/Photos from 2026/IMG-20260323-WA0001.jpg.supplemental-metadata.json",
+            _sidecar("IMG-20260323-WA0001.jpg", 1774267600),
+        )
+        z.writestr("Takeout/Google Photos/Photos from 2026/IMG-20260323-WA0001.jpg", _jpeg())
+    return [p1, p2]
+
+
+def test_index_resolves_media_across_parts(tmp_path):
+    zips = _takeout(tmp_path)
+    stats = takeout_index.build_index(zips, tmp_path / "index.csv")
+    rows = takeout_index.read_index(tmp_path / "index.csv")
+    assert stats["items"] == 3 and stats["media_present"] == 3
+    second = next(r for r in rows if r["title"] == "PXL_20260323_120500000.jpg")
+    assert second["zip"].endswith("takeout-002.zip")
+    assert rows == sorted(rows, key=lambda r: r["utc"])
+
+
+def test_select_privacy_rules():
+    base = {
+        "utc": "2026-03-23T12:00:00Z",
+        "media_path": "x",
+        "album": "Photos from 2026",
+        "people": "",
+    }
+    assert select.classify({**base, "title": "PXL_1.jpg"}, FILTERS) == "image"
+    assert select.classify({**base, "title": "PXL_1.mp4"}, FILTERS) == "video"
+    assert select.classify({**base, "title": "IMG-20260323-WA0001.jpg"}, FILTERS).startswith(
+        "not own camera"
+    )
+    assert (
+        select.classify({**base, "title": "PXL_1.jpg", "album": "Family"}, FILTERS)
+        == "private album"
+    )
+    assert (
+        select.classify({**base, "title": "PXL_1.jpg", "people": "Grandma"}, FILTERS)
+        == "private people tag"
+    )
+    assert (
+        select.classify({**base, "title": "PXL_1.jpg", "media_path": ""}, FILTERS)
+        == "media not in available zips"
+    )
+    assert (
+        select.classify({**base, "title": "PXL_1.jpg"}, {**FILTERS, "since": "2026-04-01"})
+        == "outside date range"
+    )
+
+
+def test_sessions_split_on_gap_and_local_time():
+    rows = [
+        {
+            "utc": f"2026-03-23T{h:02d}:{m:02d}:00Z",
+            "lat": "52.3",
+            "lon": "4.9",
+            "title": f"PXL_{h}{m}.jpg",
+        }
+        for h, m in [(12, 0), (12, 10), (12, 20), (15, 0), (15, 5), (15, 10)]
+    ]
+    s = sessions.build(rows, gap_minutes=90, min_photos=3)
+    assert [x["n"] for x in s] == [3, 3]
+    assert s[0]["start"] == "2026-03-23 13:00"  # CET (UTC+1) before the 29 Mar DST switch
+
+
+def test_local_time_uses_longitude_outside_europe():
+    lt = sessions.to_local("2026-01-01T12:00:00Z", lon="102.3")  # ~UTC+7
+    assert lt.hour == 19
+
+
+def test_calendar_match_filters_private_and_overlaps():
+    s = [{"id": "S1", "start_utc": "2026-03-23T12:00:00Z", "end_utc": "2026-03-23T14:00:00Z"}]
+    evs = [
+        {
+            "title": "KubeCon EU",
+            "start_utc": "2026-03-23T08:00:00Z",
+            "end_utc": "2026-03-23T17:00:00Z",
+            "location": "RAI",
+        },
+        {
+            "title": "Family call",
+            "start_utc": "2026-03-23T12:30:00Z",
+            "end_utc": "2026-03-23T13:00:00Z",
+        },
+        {
+            "title": "Other day",
+            "start_utc": "2026-03-25T12:00:00Z",
+            "end_utc": "2026-03-25T13:00:00Z",
+        },
+    ]
+    m = calendar_match.match(s, evs, ["family call"], padding_minutes=30)
+    assert [e["title"] for e in m["S1"]] == ["KubeCon EU"]
+
+
+def _v(lines=(), faces=0, max_face=0.0, codes=(), labels=None, utility=False):
+    return {
+        "lines": [{"t": t, "c": 0.9, "x": 0, "y": 0, "w": 0.5, "h": h} for t, h in lines],
+        "faces": faces,
+        "maxFace": max_face,
+        "codes": list(codes),
+        "labels": labels or {},
+        "utility": utility,
+    }
+
+
+def test_classify_flags_and_kinds():
+    assert "badge" in dossiers.classify(_v([("JANE DOE", 0.1), ("ATTENDEE", 0.05)]))[0]
+    assert "secret" in dossiers.classify(_v([("WiFi password: hunter2", 0.1)]))[0]
+    assert (
+        "contact"
+        in dossiers.classify(_v([("connect with me", 0.1), ("jane@example.com", 0.05)]))[0]
+    )
+    assert "qr-only" in dossiers.classify(_v(codes=["https://x"]))[0]
+    assert dossiers.classify(_v(faces=0))[1] == "scene"
+    assert (
+        dossiers.classify(_v(faces=1, max_face=0.05), "Luca Berton", ("Luca Berton",))[1]
+        == "selfie"
+    )
+    assert (
+        dossiers.classify(_v(faces=1, max_face=0.05), "Someone Else", ("Luca Berton",))[1]
+        == "people"
+    )
+    assert dossiers.classify(_v(faces=8, max_face=0.02))[1] == "crowd"
+
+
+def test_dossier_hides_badge_text_and_keeps_slide_text():
+    sess = {
+        "id": "S1",
+        "start": "2026-03-23 13:00",
+        "end": "2026-03-23 14:00",
+        "lat": 1,
+        "lon": 2,
+        "titles": ["PXL_a", "PXL_b"],
+    }
+    vis = {
+        "PXL_a": _v([("Scaling Argo CD", 0.2)], labels={"screen": 0.9, "crowd": 0.8}),
+        "PXL_b": _v([("JANE DOE", 0.1), ("SPEAKER", 0.05)]),
+    }
+    idx = {
+        "PXL_a": {"utc": "2026-03-23T12:00:00Z", "people": ""},
+        "PXL_b": {"utc": "2026-03-23T12:05:00Z", "people": ""},
+    }
+    md, data = dossiers.build(sess, vis, idx)
+    assert "Scaling Argo CD" in md and "JANE DOE" not in md
+    assert [p["title"] for p in data["publishable"]] == ["PXL_a"]
+
+
+def test_export_strips_exif_and_caps_size(tmp_path):
+    im = Image.open(io.BytesIO(_jpeg(exif_gps=True)))
+    assert im.info.get("exif")
+    _size, kb = export_images.save(im, tmp_path / "out.jpg", max_edge=1280, max_kb=300)
+    out = Image.open(tmp_path / "out.jpg")
+    assert max(out.size) == 1280 and kb <= 300 and not out.info.get("exif")
+    th = export_images.thumbnail(im, 1200, 630)
+    assert th.size == (1200, 630)
+
+
+def test_export_rejects_non_own_camera(tmp_path):
+    try:
+        export_images.load(
+            {"title": "IMG-20260323-WA0001.jpg", "zip": "", "media_path": ""}, tmp_path, ("PXL_",)
+        )
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError")
+
+
+def test_export_falls_back_to_analysis_copy_when_zip_is_gone(tmp_path):
+    Image.new("RGB", (2100, 1400), (10, 20, 30)).save(tmp_path / "PXL_20260323_120000000.jpg")
+    row = {
+        "title": "PXL_20260323_120000000.jpg",
+        "zip": str(tmp_path / "gone.zip"),
+        "media_path": "x",
+    }
+    im = export_images.load(row, tmp_path, ("PXL_",))
+    assert im.size == (2100, 1400)
+
+
+def test_sidecars_survive_deleting_a_part(tmp_path):
+    """Sidecar in part 1, media in part 2: after part 1 is deleted the media still gets its metadata."""
+    zips = _takeout(tmp_path)
+    store = tmp_path / "sidecars.jsonl"
+    takeout_index.build_index(zips, tmp_path / "index.csv", store)
+    zips[0].unlink()  # owner deletes part 1 after processing
+    takeout_index.build_index([zips[1]], tmp_path / "index2.csv", store)
+    rows = takeout_index.read_index(tmp_path / "index2.csv")
+    second = next(r for r in rows if r["title"] == "PXL_20260323_120500000.jpg")
+    assert (
+        second["utc"] == "2026-03-23T12:05:00Z"
+        and second["lat"]
+        and second["zip"].endswith("takeout-002.zip")
+    )
+    # The store is append-only and not duplicated on re-index.
+    n = len(store.read_text().splitlines())
+    takeout_index.build_index([zips[1]], tmp_path / "index3.csv", store)
+    assert len(store.read_text().splitlines()) == n
+
+
+def test_processed_items_stay_candidates_after_their_part_is_deleted(tmp_path):
+    row = {
+        "utc": "2026-03-23T12:00:00Z",
+        "media_path": "",
+        "zip": "",
+        "album": "Photos from 2026",
+        "people": "",
+        "title": "PXL_20260323_120000000.jpg",
+    }
+    assert select.classify(row, FILTERS) == "media not in available zips"
+    assert select.classify(row, FILTERS, {"PXL_20260323_120000000"}) == "image"
+
+
+def test_internal_work_screens_are_flagged():
+    shot = _v(
+        [
+            ('imageID: "quay-preprod-int.infra.example.corp/team/ubi9@sha256:11d5b4"', 0.05),
+            ("2: eth0: <BROADCAST,MULTICAST,UP> mtu 1500", 0.04),
+        ]
+    )
+    assert "internal" in dossiers.classify(shot)[0]
+    assert "internal" not in dossiers.classify(_v([("Scaling Argo CD", 0.2)]))[0]
+
+
+def test_transcribe_skips_existing_pixel_transcript(tmp_path, monkeypatch):
+    from event_content import videos
+
+    (tmp_path / "PXL_20260131_114025076.TS.txt").write_text("already done")
+    called = []
+    monkeypatch.setattr(videos.subprocess, "run", lambda *a, **k: called.append(a))
+    out = videos.transcribe(
+        tmp_path / "PXL_20260131_114025076.TS.mp4", tmp_path, tmp_path / "model.bin", None
+    )
+    assert out == tmp_path / "PXL_20260131_114025076.TS.txt"
+    assert called == []  # no ffmpeg, no whisper
+
+
+def test_api_keys_on_screen_are_secret():
+    for text in (
+        "export ANTHROPIC_API_KEY=sk-ant-api03-AbCdEfGhIjKlMnOp",
+        "token: ghp_abcdefghijklmnop1234",
+        "GITLAB_TOKEN = glpat-abcdefghij123",
+    ):
+        flags, _, _ = dossiers.classify(
+            {"lines": [{"t": text, "h": 0.05}], "labels": [], "faces": []}
+        )
+        assert "secret" in flags, text
+
+
+def test_preserve_saves_photos_whose_sidecar_is_in_a_later_part(tmp_path, capsys):
+    from event_content import cli
+    from event_content import config as cfgmod
+
+    base = "Takeout/Google Photos/Photos from 2026/"
+    part = tmp_path / "takeout-002.zip"
+    with zipfile.ZipFile(part, "w") as z:
+        z.writestr(base + "PXL_20260323_130000000.jpg", _jpeg())  # sidecar not here
+        z.writestr(base + "IMG-20260323-WA0002.jpg", _jpeg())  # not own camera
+        z.writestr(base + "PXL_20260323_130000000.MP", b"clip")  # Motion Photo clip half
+        z.writestr(base + "PXL_20260323_130500000.jpg", _jpeg())
+        z.writestr(
+            base + "PXL_20260323_130500000.jpg.supplemental-metadata.json",
+            _sidecar("PXL_20260323_130500000.jpg", 1774270800),
+        )
+    cfg = tmp_path / "c.toml"
+    cfg.write_text(
+        f'[paths]\ntakeout_glob = "{part}"\nwork_dir = "{tmp_path / "work"}"\n'
+        '[filters]\nown_camera_prefixes = ["PXL_"]\n[vision]\nworkers = 1\n'
+    )
+    c = cfgmod.load(cfg)
+    cli.cmd_index(c, None)
+    cli.cmd_preserve(c, None)
+    assert '"errors": 0' in capsys.readouterr().out
+    img = c.layout.img_dir
+    assert (img / "PXL_20260323_130000000.jpg").exists()  # saved before the part is deleted
+    assert not (img / "PXL_20260323_130500000.jpg").exists()  # indexed: the normal extract step
+    assert not (img / "IMG-20260323-WA0002.jpg").exists()
+
+
+def test_vision_reads_the_results_file_once(tmp_path, monkeypatch):
+    from event_content import vision
+
+    jsonl = tmp_path / "vision.jsonl"
+    imgs = [tmp_path / f"img{i}.jpg" for i in range(50)]
+    jsonl.write_text("".join(json.dumps({"path": str(p)}) + "\n" for p in imgs))
+    calls = []
+    real = vision.done_paths
+    monkeypatch.setattr(vision, "done_paths", lambda j: calls.append(1) or real(j))
+    monkeypatch.setattr(vision, "VANALYZE", tmp_path / "img0.jpg")  # any existing path
+    imgs[0].write_bytes(b"x")
+    res = vision.run(imgs, jsonl)
+    assert res["analysed_now"] == 0 and res["still_missing"] == 0
+    assert len(calls) <= 3  # not once per image
+
+
+def test_preserve_processes_videos_whose_sidecar_is_in_a_later_part(tmp_path, monkeypatch):
+    from event_content import cli, videos
+    from event_content import config as cfgmod
+
+    base = "Takeout/Google Photos/Photos from 2026/"
+    part = tmp_path / "takeout-019.zip"
+    with zipfile.ZipFile(part, "w") as z:
+        z.writestr(base + "PXL_20260925_170000000.TS.mp4", b"fake video")
+    cfg = tmp_path / "c.toml"
+    cfg.write_text(
+        f'[paths]\ntakeout_glob = "{part}"\nwork_dir = "{tmp_path / "work"}"\n'
+        '[filters]\nown_camera_prefixes = ["PXL_"]\nvideo_extensions = [".mp4"]\n'
+        "[vision]\nworkers = 1\n"
+    )
+    c = cfgmod.load(cfg)
+    cli.cmd_index(c, None)
+    calls = []
+    monkeypatch.setattr(videos, "duration", lambda p: 60.0)
+    monkeypatch.setattr(
+        videos,
+        "frames",
+        lambda p, d, *a: calls.append("frames") or (d / p.stem).mkdir(parents=True),
+    )
+    monkeypatch.setattr(
+        videos,
+        "transcribe",
+        lambda p, d, *a: calls.append("transcribe") or (d / f"{p.stem}.txt").write_text("hi"),
+    )
+    cli.cmd_preserve(c, None)
+    stem = "PXL_20260925_170000000.TS"
+    assert (c.layout.frames_dir / stem).is_dir()
+    assert (c.layout.transcripts_dir / f"{stem}.txt").exists()
+    assert not (c.layout.video_dir / f"{stem}.mp4").exists()  # local copy removed
+    cli.cmd_preserve(c, None)  # idempotent: nothing redone
+    assert calls == ["frames", "transcribe"]
+
+
+def test_takeout_glob_accepts_several_locations(tmp_path):
+    from event_content import config as cfgmod
+
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    (tmp_path / "a" / "takeout-x-001.zip").write_bytes(b"")
+    (tmp_path / "b" / "takeout-x-002.zip").write_bytes(b"")
+    cfg = tmp_path / "c.toml"
+    cfg.write_text(
+        f'[paths]\ntakeout_glob = ["{tmp_path}/a/takeout-*.zip", "{tmp_path}/b/takeout-*.zip"]\n'
+        f'work_dir = "{tmp_path / "w"}"\n'
+    )
+    assert [p.name for p in cfgmod.load(cfg).takeout_zips()] == [
+        "takeout-x-001.zip",
+        "takeout-x-002.zip",
+    ]
+
+
+def test_preserve_does_not_redo_short_videos(tmp_path, monkeypatch):
+    from event_content import cli, videos
+    from event_content import config as cfgmod
+
+    part = tmp_path / "takeout-020.zip"
+    with zipfile.ZipFile(part, "w") as z:
+        z.writestr("Takeout/Google Photos/Photos from 2026/PXL_20260925_171000000.mp4", b"x")
+    cfg = tmp_path / "c.toml"
+    cfg.write_text(
+        f'[paths]\ntakeout_glob = "{part}"\nwork_dir = "{tmp_path / "work"}"\n'
+        '[filters]\nown_camera_prefixes = ["PXL_"]\nvideo_extensions = [".mp4"]\n'
+    )
+    c = cfgmod.load(cfg)
+    cli.cmd_index(c, None)
+    calls = []
+    monkeypatch.setattr(videos, "duration", lambda p: 5.0)  # too short to transcribe
+    monkeypatch.setattr(
+        videos, "frames", lambda p, d, *a: calls.append(1) or (d / p.stem).mkdir(parents=True)
+    )
+    monkeypatch.setattr(videos, "transcribe", lambda *a: None)
+    cli.cmd_preserve(c, None)
+    cli.cmd_preserve(c, None)
+    assert calls == [1]

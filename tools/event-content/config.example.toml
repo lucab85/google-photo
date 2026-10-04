@@ -1,0 +1,74 @@
+# event-content toolkit configuration. Copy to config.toml and adjust.
+# Paths support ~ expansion. Everything is read-only on the Takeout side.
+
+[paths]
+# One or more Takeout zips (glob). JSON sidecars and media can live in different parts.
+takeout_glob = "~/Downloads/takeout-*.zip"
+# or several locations, e.g. Downloads plus an external disk:
+# takeout_glob = ["~/Downloads/takeout-*.zip", "/Volumes/External/takeouts/takeout-*.zip"]
+# Persistent working directory for all derived data (index, OCR, dossiers, transcripts).
+work_dir = "~/takeout-event-work"
+# Blog repo where export-images writes web-sized photos.
+blog_repo = "~/prj/github/lucaberton.com"
+events_subdir = "static/blog/events"
+thumbs_subdir = "static/blog/thumbnails"
+
+[filters]
+# Your own name as tagged in Google Photos: photos tagged only with these count as selfies.
+owner_people = ["Your Name"]
+# Only photos whose title starts with one of these prefixes are considered (own camera).
+own_camera_prefixes = ["PXL_"]
+# Titles containing any of these are always excluded (received via WhatsApp, screenshots...).
+exclude_title_substrings = ["-WA", "Screenshot", "screenshot"]
+# Albums and people tags (case-insensitive substrings) that mark private/family content.
+exclude_albums = []                      # e.g. ["Kids", "Family"]
+exclude_people_substrings = []           # e.g. family members' names as tagged in Google Photos
+# Optional date range (YYYY-MM-DD, inclusive) to process only part of the archive.
+since = ""
+until = ""
+image_extensions = [".jpg", ".jpeg"]
+video_extensions = [".mp4", ".mov"]
+
+[sessions]
+timezone = "Europe/Amsterdam"     # used when GPS longitude is within [-10, 30]
+gap_minutes = 90                  # a new session starts after this much silence
+min_photos = 6
+
+[vision]
+max_edge = 2100                   # size of the analysis copies (OCR needs resolution)
+chunk = 150                       # images per vanalyze run (long runs can drop output)
+languages = "en-US,nl-NL,it-IT,de-DE,fr-FR"
+workers = 8
+
+[dossiers]
+event_share_min = 0.15            # sessions below this event-likeness are treated as personal
+max_timeline_lines = 150
+
+[calendar]
+# Either a calendar-photo-organizer catalog (after `cpo auth google-calendar` + `cpo calendar-import`)...
+cpo_db = "~/.local/share/calendar-photo-organizer/cpo.db"
+# ...or a JSON list of {"title","start_utc","end_utc","location","description"} objects.
+events_json = ""
+# Events whose title or description matches any of these (case-insensitive) are never shown.
+# Add family names and private appointment keywords in your local config.toml (never commit them).
+private_keywords = ["stand up", "timesheet", "calendly", "<>", "doctor", "medic", "dentist", "bank",
+                    "flight", "stay at", "hotel", "lawyer"]
+padding_minutes = 60
+
+[video]
+frame_interval_s = 5
+dedupe_threshold = 6.0            # mean abs pixel diff on 64x36 grayscale; lower = keep more
+min_transcribe_s = 20
+# Also process own videos from this date on even outside photo sessions ("" = only event sessions).
+include_all_since = ""
+# Delete our extracted copy of each video after frames + transcript (originals stay in the zip).
+keep_videos = false
+whisper_model = "~/.cache/whisper-cpp/ggml-large-v3.bin"
+vad_model = "~/.cache/whisper-cpp/ggml-silero-v5.1.2.bin"
+
+[export]
+max_edge = 1280
+max_kb = 300
+thumb_width = 1200
+thumb_height = 630
+thumb_max_kb = 200
